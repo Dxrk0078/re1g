@@ -749,13 +749,10 @@ async function triggerChestScan(name) {
   await fetch('/bot/'+encodeURIComponent(name)+'/chestscan', {method:'POST'});
 }
 
-// ── SSE ────────────────────────────────────────────────────────────────────
-let es = null;
-// ── Polling-based connection (works reliably on Render/proxies) ──────────────
+// ── Polling-based connection ─────────────────────────────────────────────────
 let pollLastId   = 0;
 let pollTimer    = null;
 let initialised  = false;
-let es           = null;
 
 function reconnectSSE() { startPolling(); }
 
