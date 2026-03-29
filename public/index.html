@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MC Bot Console</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+:root {
+  --bg:#0d0f12; --panel:#131720; --border:#1e2535; --text:#c9d1d9; --dim:#4a5568;
+  --green:#39ff6b; --green-dim:#1a3d2b; --red:#ff4d4d; --red-dim:#3d1a1a;
+  --yellow:#ffd166; --cyan:#00d4ff; --purple:#c678dd; --orange:#ff8c42;
+  --blue:#61afef; --gray:#5c6370; --teal:#2dd4bf;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:13px;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+header{background:var(--panel);border-bottom:1px solid var(--border);padding:8px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0}
+.logo{font-size:14px;font-weight:700;color:var(--cyan);letter-spacing:2px}
+.logo span{color:var(--green)}
+.uptime-badge{font-size:11px;color:var(--dim)}
+#uptime{color:var(--cyan)}
+.header-btns{margin-left:auto;display:flex;gap:6px;align-items:center}
+.hdr-btn{background:none;border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:11px;padding:3px 10px;border-radius:3px;cursor:pointer}
+.hdr-btn:hover{border-color:var(--cyan);color:var(--cyan)}
+#conn-status{font-size:11px}
+#conn-status.connected{color:var(--green)}
+#conn-status.connecting{color:var(--yellow)}
+#conn-status.disconnected{color:var(--red)}
+#server-card{background:var(--panel);border-bottom:1px solid var(--border);padding:8px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0}
+#server-favicon{width:40px;height:40px;border-radius:4px;border:1px solid var(--border);image-rendering:pixelated;flex-shrink:0;background:#0a0c10;display:flex;align-items:center;justify-content:center;font-size:18px}
+.server-info{flex:1;min-width:0}
+#server-motd{font-size:12px;color:var(--cyan);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px}
+.server-meta{display:flex;gap:12px;font-size:10px;color:var(--dim)}
+#server-players{color:var(--green)}
+.srv-refresh{background:none;border:1px solid var(--border);color:var(--dim);cursor:pointer;font-size:10px;padding:2px 7px;border-radius:3px;font-family:inherit}
+.srv-refresh:hover{border-color:var(--cyan);color:var(--cyan)}
+.cards-row{display:flex;gap:8px;padding:10px 16px;flex-shrink:0;background:var(--panel);border-bottom:1px solid var(--border)}
+.card{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px 12px;transition:border-color .3s;min-width:0}
+.card.online{border-color:var(--green)}
+.card.offline{border-color:#2a1a1a}
+.card-header{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.status-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;transition:all .3s}
+.card.online .status-dot{background:var(--green);box-shadow:0 0 6px var(--green)}
+.card.offline .status-dot{background:var(--red)}
+.card-name{font-weight:700;font-size:12px;flex:1}
+.card-type{font-size:10px;color:var(--dim)}
+.card-badge{font-size:10px;font-weight:700;letter-spacing:1px}
+.card.online .card-badge{color:var(--green)}
+.card.offline .card-badge{color:#ff4d4d99}
+.card-stats{display:grid;grid-template-columns:1fr 1fr;gap:3px 6px;margin-bottom:6px}
+.stat{font-size:10px}
+.stat-l{color:var(--dim)}
+.stat-v{color:var(--cyan);font-weight:700}
+.coords-row{display:flex;align-items:center;gap:4px;font-size:10px;margin-bottom:6px;color:var(--dim)}
+.coords-val{color:var(--teal);font-weight:700}
+.coords-ts{color:#2a3a3a;font-size:9px}
+.icon-btn{background:none;border:none;color:var(--dim);cursor:pointer;font-size:12px;padding:0 3px;font-family:inherit}
+.icon-btn:hover{color:var(--teal)}
+.chest-row{font-size:10px;color:var(--dim);margin-bottom:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.chest-item{color:var(--orange)}
+.small-btn{background:none;border:1px solid #1e2535;color:var(--dim);font-family:inherit;font-size:9px;padding:1px 6px;border-radius:2px;cursor:pointer}
+.small-btn:hover{border-color:var(--orange);color:var(--orange)}
+.card-btns{display:flex;gap:4px}
+.btn-start,.btn-stop,.btn-console{flex:1;border:none;border-radius:3px;padding:3px 0;font-family:inherit;font-size:10px;font-weight:700;cursor:pointer}
+.btn-start{background:var(--green-dim);color:var(--green);border:1px solid #1a5c2b}
+.btn-stop{background:var(--red-dim);color:var(--red);border:1px solid #5c1a1a}
+.btn-console{background:#1a1e2e;color:var(--blue);border:1px solid #1e2a45;flex:0.7}
+.btn-start:disabled,.btn-stop:disabled{opacity:.25;cursor:not-allowed}
+.console-area{display:flex;flex:1;overflow:hidden}
+.console-pane{flex:1;display:flex;flex-direction:column;border-right:1px solid var(--border);overflow:hidden}
+.console-pane:last-child{border-right:none}
+.pane-header{background:#0e1118;border-bottom:1px solid var(--border);padding:5px 10px;display:flex;align-items:center;gap:5px;flex-shrink:0;font-size:11px;flex-wrap:wrap}
+.pane-title{color:var(--cyan);font-weight:700;margin-right:2px}
+.pane-count{color:var(--yellow);font-size:10px;margin-right:4px}
+.pane-filter{background:none;border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:10px;padding:1px 5px;border-radius:2px;cursor:pointer}
+.pane-filter.active{border-color:var(--cyan);color:var(--cyan)}
+.pane-clear{background:none;border:none;color:var(--dim);cursor:pointer;font-size:10px;font-family:inherit;margin-left:auto}
+.pane-clear:hover{color:var(--red)}
+.log-scroll{flex:1;overflow-y:auto;padding:4px 10px}
+.log-scroll::-webkit-scrollbar{width:4px}
+.log-scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.log-line{display:flex;gap:6px;padding:1px 0;border-bottom:1px solid rgba(30,37,53,.3);line-height:1.6;font-size:11px;animation:fi .12s ease}
+@keyframes fi{from{opacity:0}to{opacity:1}}
+.l-ts{color:var(--gray);flex-shrink:0;width:68px}
+.l-tag{font-size:9px;font-weight:700;letter-spacing:1px;flex-shrink:0;width:52px;text-align:right;padding-right:4px}
+.l-msg{flex:1;word-break:break-word}
+.tag-info,.msg-info{color:var(--blue)} .msg-info{color:var(--text)}
+.tag-error{color:var(--red)} .msg-error{color:var(--red)}
+.tag-kick{color:var(--orange)} .msg-kick{color:var(--orange)}
+.tag-disconnect{color:var(--orange)} .msg-disconnect{color:var(--orange);opacity:.85}
+.tag-reconnect{color:var(--yellow)} .msg-reconnect{color:var(--yellow)}
+.tag-kill{color:var(--purple)} .msg-kill{color:var(--purple)}
+.tag-food{color:#a8d8a8} .msg-food{color:#a8d8a8}
+.tag-chat{color:var(--cyan)} .msg-chat{color:var(--cyan)}
+.tag-inv{color:var(--teal)} .msg-inv{color:var(--teal)}
+.hl-error{background:rgba(255,77,77,.04)}
+.hl-kick{background:rgba(255,140,66,.04)}
+.hl-kill{background:rgba(198,120,221,.04)}
+.cmd-row{display:flex;border-top:1px solid var(--border);flex-shrink:0}
+.cmd-input{flex:1;background:#0a0c10;border:none;color:var(--text);font-family:inherit;font-size:11px;padding:6px 10px;outline:none}
+.cmd-input::placeholder{color:var(--dim)}
+.cmd-send{background:#1a2a1a;border:none;border-left:1px solid var(--border);color:var(--green);font-family:inherit;font-size:11px;padding:6px 12px;cursor:pointer}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:100;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal{background:var(--panel);border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;overflow:hidden}
+.modal-head{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0}
+.modal-title{font-weight:700;color:var(--cyan);flex:1;font-size:13px}
+.modal-close{background:none;border:none;color:var(--dim);cursor:pointer;font-size:18px;line-height:1}
+.modal-close:hover{color:var(--red)}
+#cmd-modal .modal{width:680px;max-width:95vw;height:75vh}
+.modal-log{flex:1;overflow-y:auto;padding:6px 12px}
+.modal-log::-webkit-scrollbar{width:4px}
+.modal-log::-webkit-scrollbar-thumb{background:var(--border)}
+.modal-cmd{display:flex;border-top:1px solid var(--border);flex-shrink:0}
+.modal-input{flex:1;background:#0a0c10;border:none;color:var(--text);font-family:inherit;font-size:12px;padding:8px 12px;outline:none}
+.modal-send{background:#1a2a1a;border:none;border-left:1px solid var(--border);color:var(--green);font-family:inherit;padding:8px 14px;cursor:pointer}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">⚡ MC<span>Bot</span></div>
+  <div class="uptime-badge">UP: <span id="uptime">00:00:00</span></div>
+  <div class="header-btns">
+    <button class="hdr-btn" id="btn-reconnect">⟳ Reconnect</button>
+    <span id="conn-status" class="connecting">⬤ CONNECTING</span>
+  </div>
+</header>
+
+<div id="server-card">
+  <div id="server-favicon">🌐</div>
+  <div class="server-info">
+    <div id="server-motd">Pinging server...</div>
+    <div class="server-meta">
+      <span>👥 <span id="server-players">--/--</span></span>
+      <span>📦 <span id="server-version">--</span></span>
+    </div>
+  </div>
+  <button class="srv-refresh" id="btn-ping">⟳ Ping</button>
+</div>
+
+<div style="display:flex;flex-direction:column;flex:1;overflow:hidden">
+  <div class="cards-row" id="cards"></div>
+  <div class="console-area" id="console-area"></div>
+</div>
+
+<div class="modal-overlay" id="cmd-modal">
+  <div class="modal">
+    <div class="modal-head">
+      <span class="modal-title" id="cmd-modal-title"></span>
+      <button class="modal-close" id="cmd-modal-close">✕</button>
+    </div>
+    <div class="modal-log" id="modal-log"></div>
+    <div class="modal-cmd">
+      <input class="modal-input" id="modal-input" placeholder="Type command or chat...">
+      <button class="modal-send" id="modal-send">SEND ▶</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────────
+const logsPerBot   = {};
+const statusMap    = {};
+const statsMap     = {};
+const coordsMap    = {};
+let   startTime    = Date.now();
+let   activeModal  = null;
+let   pollLastId   = 0;
+let   pollTimer    = null;
+let   initialised  = false;
+
+const TAG_LABELS = {
+  info:'INFO', error:'ERR', kick:'KICK', disconnect:'DISC',
+  reconnect:'RECONN', kill:'KILL', food:'FOOD', chat:'CHAT', inv:'INV'
+};
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function timeAgo(ts) {
+  if (!ts) return '';
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 60)   return s + 's ago';
+  if (s < 3600) return Math.floor(s / 60) + 'm ago';
+  return Math.floor(s / 3600) + 'h ago';
+}
+
+// ── Uptime ─────────────────────────────────────────────────────────────────────
+setInterval(() => {
+  const s = Math.floor((Date.now() - startTime) / 1000);
+  document.getElementById('uptime').textContent =
+    [Math.floor(s/3600), Math.floor((s%3600)/60), s%60]
+      .map(n => String(n).padStart(2,'0')).join(':');
+}, 1000);
+
+// ── Server info ────────────────────────────────────────────────────────────────
+async function refreshServerInfo() {
+  document.getElementById('server-motd').textContent  = 'Pinging...';
+  document.getElementById('server-motd').style.color  = 'var(--dim)';
+  try {
+    const d = await fetch('/serverinfo').then(r => r.json());
+    if (d && d.onlinePlayers !== undefined) {
+      document.getElementById('server-motd').textContent = d.motd || 'Unknown';
+      document.getElementById('server-motd').style.color = 'var(--cyan)';
+      document.getElementById('server-players').textContent =
+        d.onlinePlayers + '/' + d.maxPlayers + ' online';
+      document.getElementById('server-version').textContent = d.version || '?';
+      const fav = document.getElementById('server-favicon');
+      if (d.favicon && d.favicon.startsWith('data:image')) {
+        fav.innerHTML = '<img src="' + d.favicon + '" style="width:40px;height:40px;image-rendering:pixelated;border-radius:3px">';
+      } else {
+        fav.textContent = '🌐';
+      }
+    } else {
+      document.getElementById('server-motd').textContent = 'Ping failed';
+      document.getElementById('server-motd').style.color = 'var(--red)';
+    }
+  } catch (_) {
+    document.getElementById('server-motd').textContent = 'Ping failed';
+  }
+}
+
+// ── Cards ──────────────────────────────────────────────────────────────────────
+function renderCard(name) {
+  let card = document.getElementById('card-' + name);
+  if (!card) {
+    card = document.createElement('div');
+    card.id = 'card-' + name;
+    document.getElementById('cards').appendChild(card);
+  }
+  const info   = statusMap[name] || {};
+  const st     = statsMap[name]  || {};
+  const crds   = coordsMap[name] || null;
+  const inv    = st.inventory || {};
+  const chests = st.chests    || {};
+  const online = !!info.online;
+
+  card.className = 'card ' + (online ? 'online' : 'offline');
+
+  // coords row
+  let coordsHtml = '<span style="color:var(--dim)">unknown</span>';
+  if (crds) {
+    coordsHtml = '<span class="coords-val">X:' + crds.x + ' Y:' + crds.y + ' Z:' + crds.z + '</span>'
+               + '<span class="coords-ts"> ' + timeAgo(crds.ts) + '</span>';
+  }
+
+  card.innerHTML =
+    '<div class="card-header">' +
+      '<div class="status-dot"></div>' +
+      '<div style="flex:1">' +
+        '<div class="card-name">' + esc(name) + '</div>' +
+        '<div class="card-type">' + esc(info.type || 'Bot') + '</div>' +
+      '</div>' +
+      '<div class="card-badge">' + (online ? '● ONLINE' : '○ OFFLINE') + '</div>' +
+    '</div>' +
+    '<div class="card-stats">' +
+      '<div class="stat"><span class="stat-l">KILLS </span><span class="stat-v">' + (st.ghastKills || 0) + '</span></div>' +
+      '<div class="stat"><span class="stat-l">FOOD ATE </span><span class="stat-v">' + (st.foodAte || 0) + '</span></div>' +
+    '</div>' +
+    '<div class="coords-row">📍 ' + coordsHtml +
+      ' <button class="icon-btn" data-action="coords" data-bot="' + esc(name) + '" title="Refresh">⟳</button>' +
+    '</div>' +
+    '<div class="chest-row">' +
+      '💀 Tear: <span class="chest-item">inv:' + (inv.ghast_tear || 0) + ' chest:' + (chests.ghast_tear || 0) + '</span>' +
+      ' 💥 Powder: <span class="chest-item">inv:' + (inv.gunpowder || 0) + ' chest:' + (chests.gunpowder || 0) + '</span>' +
+      ' <button class="small-btn" data-action="chestscan" data-bot="' + esc(name) + '">SCAN</button>' +
+    '</div>' +
+    '<div class="card-btns">' +
+      '<button class="btn-start" ' + (info.running ? 'disabled' : '') + ' data-action="start" data-bot="' + esc(name) + '">▶ START</button>' +
+      '<button class="btn-stop"  ' + (!info.running ? 'disabled' : '') + ' data-action="stop"  data-bot="' + esc(name) + '">■ STOP</button>' +
+      '<button class="btn-console" data-action="console" data-bot="' + esc(name) + '">⌨ CMD</button>' +
+    '</div>';
+}
+
+// ── Delegated click handler (no inline onclick needed) ────────────────────────
+document.addEventListener('click', async function(e) {
+  const el  = e.target.closest('[data-action]');
+  if (!el) return;
+  const action = el.dataset.action;
+  const bot    = el.dataset.bot;
+
+  if (action === 'coords') {
+    await fetch('/bot/' + encodeURIComponent(bot) + '/coords', { method: 'POST' });
+  } else if (action === 'chestscan') {
+    await fetch('/bot/' + encodeURIComponent(bot) + '/chestscan', { method: 'POST' });
+  } else if (action === 'start' || action === 'stop') {
+    const d = await fetch('/bot/' + encodeURIComponent(bot) + '/' + action, { method: 'POST' }).then(r => r.json());
+    if (!d.ok) alert('Error: ' + (d.reason || 'unknown'));
+  } else if (action === 'console') {
+    openCmdModal(bot);
+  }
+});
+
+// ── Console panes ──────────────────────────────────────────────────────────────
+function initConsolePanes(bots) {
+  const area = document.getElementById('console-area');
+  area.innerHTML = '';
+  for (const name of bots) {
+    logsPerBot[name] = [];
+
+    const pane = document.createElement('div');
+    pane.className = 'console-pane';
+    pane.id = 'pane-' + name;
+
+    // header
+    const header = document.createElement('div');
+    header.className = 'pane-header';
+    header.innerHTML =
+      '<span class="pane-title">' + esc(name) + '</span>' +
+      '<span class="pane-count" id="pcount-' + name + '">0</span>';
+
+    for (const [label, filter] of [['ALL','all'],['ERR','error'],['KILL','kill'],['CHAT','chat'],['INV','inv']]) {
+      const btn = document.createElement('button');
+      btn.className = 'pane-filter' + (filter === 'all' ? ' active' : '');
+      btn.textContent = label;
+      btn.dataset.filter = filter;
+      btn.dataset.pane   = name;
+      btn.addEventListener('click', function() {
+        pane.querySelectorAll('.pane-filter').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        rebuildPane(name, this.dataset.filter);
+      });
+      header.appendChild(btn);
+    }
+
+    const clr = document.createElement('button');
+    clr.className = 'pane-clear';
+    clr.textContent = 'CLR';
+    clr.addEventListener('click', () => { logsPerBot[name] = []; rebuildPane(name, 'all'); });
+    header.appendChild(clr);
+    pane.appendChild(header);
+
+    // scroll area
+    const scroll = document.createElement('div');
+    scroll.className = 'log-scroll';
+    scroll.id = 'scroll-' + name;
+    pane.appendChild(scroll);
+
+    // cmd row
+    const cmdRow = document.createElement('div');
+    cmdRow.className = 'cmd-row';
+    const input = document.createElement('input');
+    input.className = 'cmd-input';
+    input.id = 'cmdinput-' + name;
+    input.placeholder = '/cmd or chat for ' + name + '...';
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') sendCmd(name);
+    });
+    const sendBtn = document.createElement('button');
+    sendBtn.className = 'cmd-send';
+    sendBtn.textContent = '▶';
+    sendBtn.addEventListener('click', () => sendCmd(name));
+    cmdRow.appendChild(input);
+    cmdRow.appendChild(sendBtn);
+    pane.appendChild(cmdRow);
+
+    area.appendChild(pane);
+
+    scroll.addEventListener('scroll', () => {
+      scroll._autoScroll = scroll.scrollTop + scroll.clientHeight >= scroll.scrollHeight - 20;
+    });
+    scroll._autoScroll = true;
+  }
+}
+
+function makeLogEl(entry) {
+  const type = entry.type || 'info';
+  const div  = document.createElement('div');
+  div.className = 'log-line hl-' + type;
+  div.dataset.type = type;
+  const ts  = document.createElement('span'); ts.className  = 'l-ts';  ts.textContent = new Date(entry.ts).toTimeString().slice(0,8);
+  const tag = document.createElement('span'); tag.className = 'l-tag tag-' + type; tag.textContent = TAG_LABELS[type] || type.toUpperCase();
+  const msg = document.createElement('span'); msg.className = 'l-msg msg-' + type; msg.textContent = entry.message;
+  div.appendChild(ts); div.appendChild(tag); div.appendChild(msg);
+  return div;
+}
+
+function appendToPane(entry) {
+  const bot = entry.username;
+  if (!logsPerBot[bot]) return;
+  logsPerBot[bot].push(entry);
+
+  const activeFilter = document.querySelector('#pane-' + bot + ' .pane-filter.active');
+  const filter = activeFilter ? activeFilter.dataset.filter : 'all';
+
+  if (filter === 'all' || filter === entry.type) {
+    const scroll = document.getElementById('scroll-' + bot);
+    if (scroll) {
+      scroll.appendChild(makeLogEl(entry));
+      if (scroll._autoScroll !== false) scroll.scrollTop = scroll.scrollHeight;
+    }
+    if (activeModal === bot) {
+      const ml = document.getElementById('modal-log');
+      if (ml) { ml.appendChild(makeLogEl(entry)); ml.scrollTop = ml.scrollHeight; }
+    }
+  }
+  const c = document.getElementById('pcount-' + bot);
+  if (c) c.textContent = logsPerBot[bot].length;
+}
+
+function rebuildPane(bot, filter) {
+  const scroll = document.getElementById('scroll-' + bot);
+  if (!scroll) return;
+  scroll.innerHTML = '';
+  const visible = filter === 'all' ? logsPerBot[bot] : logsPerBot[bot].filter(e => e.type === filter);
+  visible.forEach(e => scroll.appendChild(makeLogEl(e)));
+  scroll.scrollTop = scroll.scrollHeight;
+}
+
+// ── Commands ───────────────────────────────────────────────────────────────────
+async function sendCmd(name) {
+  const input = document.getElementById('cmdinput-' + name);
+  if (!input || !input.value.trim()) return;
+  const cmd = input.value.trim(); input.value = '';
+  const d = await fetch('/bot/' + encodeURIComponent(name) + '/cmd', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cmd })
+  }).then(r => r.json());
+  if (!d.ok) appendToPane({ username: name, type: 'error', message: 'CMD failed: ' + (d.reason || '?'), ts: Date.now() });
+}
+
+// ── CMD Modal ──────────────────────────────────────────────────────────────────
+function openCmdModal(name) {
+  activeModal = name;
+  document.getElementById('cmd-modal-title').textContent = '⌨ ' + name + ' — Console';
+  const log = document.getElementById('modal-log');
+  log.innerHTML = '';
+  (logsPerBot[name] || []).forEach(e => log.appendChild(makeLogEl(e)));
+  log.scrollTop = log.scrollHeight;
+  document.getElementById('cmd-modal').classList.add('open');
+  setTimeout(() => document.getElementById('modal-input').focus(), 50);
+}
+
+document.getElementById('cmd-modal-close').addEventListener('click', () => {
+  document.getElementById('cmd-modal').classList.remove('open');
+  activeModal = null;
+});
+document.getElementById('cmd-modal').addEventListener('click', function(e) {
+  if (e.target === this) { this.classList.remove('open'); activeModal = null; }
+});
+document.getElementById('modal-send').addEventListener('click', async () => {
+  if (!activeModal) return;
+  const input = document.getElementById('modal-input');
+  if (!input.value.trim()) return;
+  const cmd = input.value.trim(); input.value = '';
+  const d = await fetch('/bot/' + encodeURIComponent(activeModal) + '/cmd', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cmd })
+  }).then(r => r.json());
+  if (!d.ok) appendToPane({ username: activeModal, type: 'error', message: 'CMD failed: ' + (d.reason || '?'), ts: Date.now() });
+});
+document.getElementById('modal-input').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') document.getElementById('modal-send').click();
+});
+
+// ── Event handler ──────────────────────────────────────────────────────────────
+function handleEvent(event, data) {
+  if (event === 'log') { appendToPane(data); return; }
+  if (event === 'status') {
+    if (statusMap[data.username]) statusMap[data.username].online = data.online;
+    renderCard(data.username); return;
+  }
+  if (event === 'stats') {
+    statsMap[data.username] = data.stats; renderCard(data.username); return;
+  }
+  if (event === 'coords') {
+    coordsMap[data.username] = data.coords; renderCard(data.username); return;
+  }
+  if (event === 'chestScan') {
+    if (statsMap[data.username]) statsMap[data.username].chests = data.chests;
+    appendToPane({ username: data.username, type: 'inv',
+      message: 'Chest scan (' + data.count + '): ' + JSON.stringify(data.chests), ts: Date.now() });
+    renderCard(data.username); return;
+  }
+  if (event === 'control') {
+    if (statusMap[data.username]) statusMap[data.username].running = (data.action === 'started');
+    renderCard(data.username); return;
+  }
+  if (event === 'serverInfo') { refreshServerInfo(); return; }
+}
+
+// ── Polling ────────────────────────────────────────────────────────────────────
+async function doPoll() {
+  const connEl = document.getElementById('conn-status');
+  try {
+    const d = await fetch('/poll?since=' + pollLastId).then(r => r.json());
+
+    if (!initialised) {
+      initialised = true;
+      const { status, stats, coords: crds, serverInfo: si, serverStart, bots } = d.state;
+      if (serverStart) startTime = serverStart;
+
+      // Init panes with bot names from server
+      const botNames = bots ? Object.keys(bots) : Object.keys(status);
+      initConsolePanes(botNames);
+
+      for (const [name, info] of Object.entries(status)) {
+        statusMap[name] = info;
+        statsMap[name]  = stats[name] || {};
+        coordsMap[name] = crds[name]  || null;
+        if (bots && bots[name]) statusMap[name].type = bots[name];
+        renderCard(name);
+      }
+      if (si) refreshServerInfo();
+
+      for (const ev of d.events) {
+        if (ev.event === 'log') appendToPane(ev.data);
+      }
+      pollLastId = d.lastId;
+      connEl.className   = 'connected';
+      connEl.textContent = '⬤ LIVE';
+    } else {
+      for (const ev of d.events) handleEvent(ev.event, ev.data);
+      pollLastId = d.lastId;
+      connEl.className   = 'connected';
+      connEl.textContent = '⬤ LIVE';
+    }
+  } catch (_) {
+    connEl.className   = 'disconnected';
+    connEl.textContent = '⬤ DISCONNECTED — retrying...';
+    initialised = false;
+    pollLastId  = 0;
+  }
+  pollTimer = setTimeout(doPoll, 2000);
+}
+
+function startPolling() {
+  if (pollTimer) clearTimeout(pollTimer);
+  initialised = false; pollLastId = 0;
+  document.getElementById('conn-status').className   = 'connecting';
+  document.getElementById('conn-status').textContent = '⬤ CONNECTING';
+  doPoll();
+}
+
+document.getElementById('btn-reconnect').addEventListener('click', startPolling);
+document.getElementById('btn-ping').addEventListener('click', refreshServerInfo);
+
+startPolling();
+refreshServerInfo();
+setInterval(refreshServerInfo, 5 * 60 * 1000);
+</script>
+</body>
+</html>
