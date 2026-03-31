@@ -39,18 +39,18 @@ function emit(username, type, message) {
 // ─── Auto login ───────────────────────────────────────────────────────────────
 function setupAutoLogin(bot, username) {
   bot.once('spawn', async () => {
-    emit(username, 'info', 'Spawned — waiting for auth prompt...');
+    emit(username, 'info', 'Spawned — sending login immediately...');
     botEvents.emit('status', { username, online: true });
-    // Wait 1.5s then spam both register and login
-    await sleep(1500);
+    // Send immediately — PrimE plugin has very short auth window
+    bot.chat(`/login ${PASSWORD}`);
+    await sleep(200);
     bot.chat(`/register ${PASSWORD} ${PASSWORD}`);
-    await sleep(800);
+    await sleep(200);
     bot.chat(`/login ${PASSWORD}`);
-    emit(username, 'info', 'Sent /register + /login');
-    // Send login again after 3s in case first was too early
-    await sleep(3000);
+    emit(username, 'info', 'Sent login commands');
+    // Retry once more after 2s
+    await sleep(2000);
     bot.chat(`/login ${PASSWORD}`);
-    emit(username, 'info', 'Sent /login (retry)');
   });
 
   bot.on('message', async (jsonMsg) => {
