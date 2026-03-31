@@ -18,27 +18,11 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 function parseReason(reason) {
   if (!reason) return 'unknown';
-  // NBT compound format: {type:'compound', value:{extra:{...}, text:{...}}}
   if (typeof reason === 'object') {
-    if (reason.type === 'compound' && reason.value) {
-      const parts = [];
-      const extra = reason.value.extra?.value?.value;
-      if (Array.isArray(extra)) {
-        for (const el of extra) {
-          const t = el?.text?.value || el?.value || '';
-          if (t && t.trim()) parts.push(t.trim());
-        }
-      }
-      const base = reason.value.text?.value || '';
-      if (base.trim()) parts.unshift(base.trim());
-      return parts.join(' ') || JSON.stringify(reason);
-    }
     return reason.text || reason.translate || JSON.stringify(reason);
   }
   try {
     const parsed = JSON.parse(reason);
-    // Recursively parse if it's NBT
-    if (parsed.type === 'compound') return parseReason(parsed);
     return parsed.text || parsed.translate || reason;
   } catch (_) { return String(reason); }
 }
@@ -53,69 +37,36 @@ function emit(username, type, message) {
 }
 
 // ─── Auto login ───────────────────────────────────────────────────────────────
-// Velocity+Limbo: server sends a chat message asking to login — we respond to that
-// rather than relying on spawn timing which fires in the limbo world too early.
 function setupAutoLogin(bot, username) {
-  let loginSent   = false;
-  let loggedIn    = false;
-  let fallbackTimer = null;
-
-  bot.once('spawn', () => {
-    botEvents.emit('status', { username, online: true });
+  bot.once('spawn', async () => {
     emit(username, 'info', 'Spawned — waiting for auth prompt...');
-
-    // Fallback: send /login after 3s if server never prompted
-    fallbackTimer = setTimeout(async () => {
-      if (!loginSent && !loggedIn) {
-        loginSent = true;
-        emit(username, 'info', 'Sending /login (no prompt received)...');
-        try { bot.chat(`/login ${PASSWORD}`); } catch(_) {}
-        await sleep(400);
-        try { bot.chat(`/register ${PASSWORD} ${PASSWORD}`); } catch(_) {}
-      }
-    }, 3000);
+    botEvents.emit('status', { username, online: true });
+    // Wait 1.5s then spam both register and login
+    await sleep(1500);
+    bot.chat(`/register ${PASSWORD} ${PASSWORD}`);
+    await sleep(800);
+    bot.chat(`/login ${PASSWORD}`);
+    emit(username, 'info', 'Sent /register + /login');
+    // Send login again after 3s in case first was too early
+    await sleep(3000);
+    bot.chat(`/login ${PASSWORD}`);
+    emit(username, 'info', 'Sent /login (retry)');
   });
 
   bot.on('message', async (jsonMsg) => {
-    const raw = jsonMsg.toString();
-    const msg = raw.toLowerCase();
-
-    // Detect successful login
-    if (msg.includes('logged in') || msg.includes('successfully') ||
-        msg.includes('welcome back') || msg.includes('authenticated')) {
-      loggedIn = true;
-      if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
-      emit(username, 'info', 'Logged in successfully.');
-    }
-
-    // Respond to auth prompt — only once, and never if already logged in
-    if (!loginSent && !loggedIn && (
-        msg.includes('/login') || msg.includes('please login') ||
-        msg.includes('not logged') || msg.includes('authorization') ||
-        msg.includes('authenticate') || msg.includes('authme') ||
-        msg.includes('/register'))) {
-      loginSent = true;
-      if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
-      emit(username, 'info', 'Auth prompt — sending /login...');
-      await sleep(100);
-      try { bot.chat(`/login ${PASSWORD}`); } catch(_) {}
+    const msg = jsonMsg.toString().toLowerCase();
+    if (msg.includes('please login') || msg.includes('use /login') ||
+        msg.includes('not logged') || msg.includes('login first')) {
       await sleep(300);
-      try { bot.chat(`/register ${PASSWORD} ${PASSWORD}`); } catch(_) {}
+      bot.chat(`/login ${PASSWORD}`);
     }
-
-    // Hub/proxy detection
-    if (msg.includes('choose a server') || msg.includes('select server') ||
-        (msg.includes('hub') && !msg.includes('github'))) {
-      emit(username, 'info', 'Hub detected — /server anarchy');
-      try { bot.chat('/server anarchy'); } catch(_) {}
+    if (msg.includes('please register') || msg.includes('use /register') ||
+        msg.includes('not registered')) {
+      await sleep(300);
+      bot.chat(`/register ${PASSWORD} ${PASSWORD}`);
+      await sleep(500);
+      bot.chat(`/login ${PASSWORD}`);
     }
-  });
-
-  // Full reset on disconnect so next reconnect logs in fresh
-  bot.on('end', () => {
-    loginSent = false;
-    loggedIn  = false;
-    if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
   });
 }
 
@@ -181,9 +132,6 @@ function setupChestScanner(bot, username) {
 
 async function scanInventoryAndChests(bot, username) {
   try {
-    // Always reset chest data first so old counts never accumulate
-    botEvents.emit("chestScan", { username, chests: {}, count: 0 });
-
     // Inventory first
     const invCounts = {};
     for (const item of bot.inventory.items()) {
@@ -240,66 +188,29 @@ function setupCoordsTracker(bot, username) {
 
 // ─── Server ping ──────────────────────────────────────────────────────────────
 async function fetchServerInfo() {
-  // Pure Node.js MC status ping — no extra packages needed
   return new Promise((resolve) => {
-    const net = require('net');
-    const timer = setTimeout(() => { socket.destroy(); resolve(null); }, 5000);
-    const socket = net.createConnection({ host: HOST, port: MC_PORT });
-    let buf = Buffer.alloc(0);
-
-    socket.on('connect', () => {
-      // Handshake + Status Request packets
-      const host = Buffer.from(HOST, 'utf8');
-      const handshake = Buffer.concat([
-        Buffer.from([0x00]),           // packet id
-        Buffer.from([0x00]),           // protocol version (0 = status)
-        Buffer.from([host.length]),    // host length
-        host,
-        Buffer.from([MC_PORT >> 8, MC_PORT & 0xFF]), // port
-        Buffer.from([0x01]),           // next state = status
-      ]);
-      const hLen = varInt(handshake.length);
-      const statusReq = Buffer.from([0x01, 0x00]); // length=1, packet id=0
-      socket.write(Buffer.concat([hLen, handshake, statusReq]));
-    });
-
-    socket.on('data', (chunk) => {
-      buf = Buffer.concat([buf, chunk]);
-      try {
-        let offset = 0;
-        const [pktLen, o1] = readVarInt(buf, offset); offset = o1;
-        if (buf.length < offset + pktLen) return; // wait for more
-        offset++; // skip packet id (0x00)
-        const [strLen, o2] = readVarInt(buf, offset); offset = o2;
-        const json = buf.slice(offset, offset + strLen).toString('utf8');
-        const data = JSON.parse(json);
+    // Hard timeout — never block longer than 5s
+    const timer = setTimeout(() => resolve(null), 5000);
+    try {
+      const mc = require('minecraft-protocol');
+      mc.ping({ host: HOST, port: MC_PORT, closeTimeout: 4000 }, (err, result) => {
         clearTimeout(timer);
-        socket.destroy();
-        const desc = data.description;
-        resolve({
-          motd: typeof desc === 'string' ? desc : (desc?.text || ''),
-          onlinePlayers: data.players?.online ?? 0,
-          maxPlayers: data.players?.max ?? 0,
-          version: data.version?.name || '?',
-          favicon: data.favicon || null,
-        });
-      } catch(_) {}
-    });
-
-    socket.on('error', () => { clearTimeout(timer); resolve(null); });
-    socket.on('close', () => { clearTimeout(timer); });
+        if (err) { resolve(null); return; }
+        try {
+          resolve({
+            motd: result.description
+              ? (typeof result.description === 'string' ? result.description
+                : result.description.text || JSON.stringify(result.description))
+              : '',
+            onlinePlayers: result.players?.online ?? 0,
+            maxPlayers: result.players?.max ?? 0,
+            version: result.version?.name || '?',
+            favicon: result.favicon || null,
+          });
+        } catch(_) { resolve(null); }
+      });
+    } catch (_) { clearTimeout(timer); resolve(null); }
   });
-}
-
-function varInt(val) {
-  const out = [];
-  do { let b = val & 0x7F; val >>>= 7; if (val) b |= 0x80; out.push(b); } while (val);
-  return Buffer.from(out);
-}
-function readVarInt(buf, offset) {
-  let val = 0, shift = 0, b;
-  do { b = buf[offset++]; val |= (b & 0x7F) << shift; shift += 7; } while (b & 0x80);
-  return [val, offset];
 }
 
 // ─── Core bot lifecycle (start / stop / reconnect) ────────────────────────────
@@ -340,6 +251,14 @@ function startBotLifecycle(createFn, username, delayMs = 30000) {
       }, delayMs);
     };
 
+    bot.on('message', (jsonMsg) => {
+      const msg = jsonMsg.toString().toLowerCase();
+      if (msg.includes('hub') || msg.includes('lobby') || msg.includes('choose a server') || msg.includes('select server')) {
+        emit(username, 'info', 'Hub detected — sending /server anarchy');
+        bot.chat('/server anarchy');
+      }
+    });
+
     bot.on('end',    (r)   => die(parseReason(r) || 'connection ended'));
     bot.on('kicked', (r)   => { const m = parseReason(r); emit(username, 'kick', m); die('kicked: '+m); });
     bot.on('error',  (err) => {
@@ -368,7 +287,14 @@ function startBotLifecycle(createFn, username, delayMs = 30000) {
   };
 }
 
-// exports at bottom of file
+module.exports = {
+  HOST, MC_PORT, PASSWORD, sleep,
+  botEvents, botRegistry, emit, parseReason,
+  setupAutoLogin, setupAutoEat,
+  setupInventoryScan, setupChestScanner, scanInventoryAndChests,
+  setupCoordsTracker, fetchServerInfo,
+  startBotLifecycle,
+};
 
 // ─── Map data reader ──────────────────────────────────────────────────────────
 // Mineflayer color palette (128 base colors × 4 shading = 512 entries)
@@ -500,13 +426,5 @@ function setupMapListener(bot, username) {
   });
 }
 
-// (exported above)
-
-module.exports = {
-  HOST, MC_PORT, PASSWORD, sleep,
-  botEvents, botRegistry, botMaps, emit, parseReason,
-  setupAutoLogin, setupAutoEat,
-  setupInventoryScan, setupChestScanner, scanInventoryAndChests,
-  setupCoordsTracker, fetchServerInfo,
-  startBotLifecycle, setupMapListener,
-};
+module.exports.setupMapListener = setupMapListener;
+module.exports.botMaps = botMaps;
