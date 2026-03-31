@@ -784,8 +784,8 @@ setInterval(refreshServerInfo, 5 * 60 * 1000);
 });
 
 // ─── Start server FIRST, then bots ────────────────────────────────────────────
-app.listen(PORT_WEB, () => {
-  console.log('[Dashboard] http://localhost:' + PORT_WEB);
+app.listen(PORT_WEB, '0.0.0.0', () => {
+  console.log('[Dashboard] http://0.0.0.0:' + PORT_WEB);
 
   // SSE keepalive ping
   setInterval(() => {
